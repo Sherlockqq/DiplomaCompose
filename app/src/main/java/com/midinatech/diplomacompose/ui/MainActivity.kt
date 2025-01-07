@@ -1,55 +1,25 @@
 package com.midinatech.diplomacompose.ui
 
+import com.midinatech.diplomacompose.ui.viewmodel.ArtViewModel
 import android.Manifest
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Bundle
-import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
-import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Button
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.vectorResource
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
 import androidx.lifecycle.ViewModelProvider
-import coil.compose.AsyncImage
-import com.midinatech.diplomacompose.R
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import com.canhub.cropper.CropImageContract
+import com.midinatech.diplomacompose.ui.screen.ArtScreen
+import com.midinatech.diplomacompose.ui.screen.MainScreen
+import com.midinatech.diplomacompose.ui.viewmodel.MainViewModel
+import com.midinatech.diplomacompose.ui.viewmodel.factory.ArtViewModelFactory
+import com.midinatech.diplomacompose.ui.viewmodel.factory.MainViewModelFactory
 
 class MainActivity : ComponentActivity() {
 
@@ -57,19 +27,32 @@ class MainActivity : ComponentActivity() {
         private const val TAG = "MainActivity"
     }
 
-    private val viewModel: MainViewModel by lazy {
-        ViewModelProvider(this, ViewModelFactory(this))[MainViewModel::class.java]
+    private val mainViewModel: MainViewModel by lazy {
+        ViewModelProvider(this, MainViewModelFactory(this))[MainViewModel::class.java]
     }
 
+    private val artViewModel: ArtViewModel by lazy {
+        ViewModelProvider(this, ArtViewModelFactory(this))[ArtViewModel::class.java]
+    }
     private val enableBtLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             if (result.resultCode == RESULT_OK) {
-                viewModel.connectToDevice()
+                mainViewModel.connectToDevice()
             } else {
                 Toast.makeText(this, "Bluetooth is required for this app", Toast.LENGTH_SHORT)
                     .show()
             }
         }
+
+
+    private val cropImageLauncher = registerForActivityResult(CropImageContract()) { result ->
+        if (result.isSuccessful) {
+            val uri = result.uriContent
+            uri?.let {
+                mainViewModel.cropImageToMatrix(this, uri)
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -99,238 +82,289 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onDestroy() {
+        mainViewModel.disconnectBluetooth()
+        mainViewModel.disconnectFromSpotify()
+        super.onDestroy()
+    }
+
     @Composable
     fun DiplomaApp() {
-        Scaffold(
-            topBar = { Toolbar() }
-        ) { _ ->
-            var selectedColor by remember { mutableStateOf(Color.Blue) }
+        val navController = rememberNavController()
 
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                DrawingMatrix(selectedColor)
-
-
-                when (viewModel.mode) {
-                    is Mode.Paint -> ColorPicker(onColorSelected = {
-                        selectedColor = it
-                        Log.d(TAG, "DiplomaApp: onColorSelected : $selectedColor")
-                    })
-
-                    is Mode.Image -> {
-                        Log.d(TAG, "DiplomaApp: Image")
-                        PhotoSelectorView()
-                    }
-
-                    is Mode.Spotify -> {
-                        Log.d(TAG, "DiplomaApp: Spotify")
-                    }
-                }
-            }
-        }
-    }
-
-    @OptIn(ExperimentalMaterial3Api::class)
-    @Composable
-    fun Toolbar() {
-        var showDialog by remember { mutableStateOf(false) }
-
-        TopAppBar(
-            title = { Text("Pixel Art") },
-            actions = {
-
-                IconButton(onClick = {
-                    viewModel.clearMatrix()
-                }) {
-                    Icon(
-                        imageVector = ImageVector.vectorResource(R.drawable.ic_clear),
-                        contentDescription = "Clear Button"
-                    )
-                }
-
-                IconButton(onClick = {
-                    if (viewModel.isConnected) {
-                        viewModel.disconnect()
-                    } else {
-                        viewModel.connectToDevice()
-                        Log.d(TAG, "Toolbar: enableBluetoothIf needeed")
-                    }
-
-                }) {
-                    Icon(
-                        imageVector = if (viewModel.isConnected) ImageVector.vectorResource(id = R.drawable.ic_bluetooth_on) else ImageVector.vectorResource(
-                            id = R.drawable.ic_bluetooth_off
-                        ),
-                        contentDescription = "Bluetooth Status"
-                    )
-                }
-
-                IconButton(onClick = {
-                    showDialog = true
-                }) {
-                    Icon(
-                        imageVector = ImageVector.vectorResource(id = R.drawable.ic_all_modes),
-                        contentDescription = "All modes"
-                    )
-                }
-
-                if (showDialog) {
-                    ModeDialog(onIconSelected = {
-                        viewModel.onModeSelected(it)
-                        showDialog = false
-                    }, onDismiss = {
-                        showDialog = false
-                    })
-                }
-            }
-        )
-    }
-
-    @Composable
-    fun DrawingMatrix(selectedColor: Color) {
-        Column(
-            modifier = Modifier
-                .padding(16.dp)
+        NavHost(
+            navController = navController,
+            startDestination = "screen_main"
         ) {
-            Canvas(
-                modifier = Modifier
-                    .aspectRatio(1f)
-                    .pointerInput(selectedColor) {
-                        detectTapGestures { offset ->
-                            val cellSize = size.width / 16
-                            val row = (offset.y / cellSize).toInt()
-                            val col = (offset.x / cellSize).toInt()
-
-                            if (row in 0 until 16 && col in 0 until 16) {
-                                viewModel.setMatrixColor(row, col, selectedColor)
-                            }
-                        }
-                    }
-                    .pointerInput(selectedColor) {
-                        detectDragGestures { change, _ ->
-                            change.consume()
-                            val cellSize = size.width / 16
-                            val row = (change.position.y / cellSize).toInt()
-                            val col = (change.position.x / cellSize).toInt()
-
-                            if (row in 0 until 16 && col in 0 until 16) {
-                                Log.d(TAG, "DrawingMatrix: $selectedColor")
-                                viewModel.setMatrixColor(row, col, selectedColor)
-                            }
-                        }
-                    }
-            ) {
-                val cellSize = size.width / 16
-                for (row in 0 until 16) {
-                    for (col in 0 until 16) {
-                        drawRect(
-                            color = viewModel.matrix[row][col],
-                            topLeft = Offset(x = col * cellSize, y = row * cellSize),
-                            size = Size(cellSize, cellSize)
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-
-    @Composable
-    fun PhotoSelectorView(maxSelectionCount: Int = 1) {
-        var selectedImages by remember {
-            mutableStateOf<List<Uri?>>(emptyList())
-        }
-
-        val buttonText = if (maxSelectionCount > 1) {
-            "Select up to $maxSelectionCount photos"
-        } else {
-            "Select a photo"
-        }
-
-        val singlePhotoPickerLauncher = rememberLauncherForActivityResult(
-            contract = ActivityResultContracts.PickVisualMedia(),
-            onResult = { uri -> selectedImages = listOf(uri) }
-        )
-
-        // I will start this off by saying that I am still learning Android development:
-        // We are tricking the multiple photos picker here which is probably not the best way,
-        // if you know of a better way to implement this feature drop a comment and let me know
-        // how to improve this design
-        val multiplePhotoPickerLauncher = rememberLauncherForActivityResult(
-            contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = if (maxSelectionCount > 1) {
-                maxSelectionCount
-            } else {
-                2
-            }),
-            onResult = { uris -> selectedImages = uris }
-        )
-
-        fun launchPhotoPicker() {
-            if (maxSelectionCount > 1) {
-                multiplePhotoPickerLauncher.launch(
-                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                )
-            } else {
-                singlePhotoPickerLauncher.launch(
-                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+            composable("screen_main") {
+                MainScreen(
+                    this@MainActivity,
+                    mainViewModel,
+                    navController
                 )
             }
-        }
-
-        Column(
-            modifier = Modifier.fillMaxSize(),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Button(onClick = {
-                launchPhotoPicker()
-            }) {
-                Text(buttonText)
-            }
-
-            ImageLayoutView(selectedImages = selectedImages)
+            composable("screen_art") { ArtScreen(artViewModel, navController) }
         }
     }
 
-    @Composable
-    fun ImageLayoutView(selectedImages: List<Uri?>) {
-        LazyRow {
-            items(selectedImages) { uri ->
-                AsyncImage(
-                    model = uri,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxWidth(),
-                    contentScale = ContentScale.Fit
-                )
-            }
-        }
-    }
-
-    @Preview(showBackground = true)
-    @Composable
-    fun AppPreview() {
-        MaterialTheme {
-            DiplomaApp()
-        }
-    }
-
-    @Preview(showBackground = true)
-    @Composable
-    fun ToolbarPreview() {
-        MaterialTheme {
-            Toolbar()
-        }
-    }
-
-    @Preview(showBackground = true)
-    @Composable
-    fun DrawingMatrixPreview() {
-        MaterialTheme {
-            DrawingMatrix(Color.Blue)
-        }
-    }
+//    @Composable
+//    fun DiplomaApp() {
+//        Scaffold(
+//            topBar = { Toolbar() }
+//        ) { _ ->
+//            Column(
+//                modifier = Modifier
+//                    .fillMaxSize()
+//                    .padding(16.dp),
+//                horizontalAlignment = Alignment.CenterHorizontally,
+//                verticalArrangement = Arrangement.Center
+//            ) {
+//                val trackImage by mainViewModel.trackImageFlow.collectAsState(initial = null)
+//
+//                DrawingMatrix()
+//
+//                when (val currentMode = mainViewModel.mode) {
+//                    is Mode.PaintMode -> currentMode.SettingView { type ->
+//                        Log.d(TAG, "DiplomaApp: type: ${type.color}")
+//                        Log.d(TAG, "DiplomaApp: type: $type")
+//                        mainViewModel.setASelectedType(type)
+//                    }
+//                    is Mode.ImageMode -> currentMode.SettingView { uri ->
+//                        cropImageLauncher.launch(
+//                            CropImageContractOptions(
+//                                uri,
+//                                CropImageOptions(
+//                                    guidelines = CropImageView.Guidelines.ON,
+//                                    cropShape = CropImageView.CropShape.RECTANGLE,
+//                                    fixAspectRatio = true,
+//                                )
+//                            )
+//                        )
+//                    }
+//                    is Mode.SpotifyMode -> currentMode.SettingView { _ ->
+//                        mainViewModel.connectToSpotify()
+//                    }
+//                }
+//
+//                trackImage?.let { track ->
+//                    LaunchedEffect(track.imageUri) {
+//                        mainViewModel.cropImageToMatrix(context = this@MainActivity, track.imageUri)
+//                    }
+//                }
+//            }
+//        }
+//    }
+//
+//    @OptIn(ExperimentalMaterial3Api::class)
+//    @Composable
+//    fun Toolbar() {
+//        var showDialog by remember { mutableStateOf(false) }
+//        var expanded by remember { mutableStateOf(false) }
+//
+//
+//        TopAppBar(
+//            title = { Text("Pixel Art") },
+//            actions = {
+//
+//                IconButton(onClick = {
+//                    mainViewModel.clearMatrix()
+//                }) {
+//                    Icon(
+//                        imageVector = ImageVector.vectorResource(R.drawable.ic_clear),
+//                        contentDescription = "Clear Button"
+//                    )
+//                }
+//
+//                IconButton(onClick = {
+//                    if (mainViewModel.isConnected) {
+//                        mainViewModel.disconnectBluetooth()
+//                    } else {
+//                        mainViewModel.connectToDevice()
+//                        Log.d(TAG, "Toolbar: enableBluetoothIf needeed")
+//                    }
+//
+//                }) {
+//                    Icon(
+//                        imageVector = if (mainViewModel.isConnected) ImageVector.vectorResource(id = R.drawable.ic_bluetooth_on) else ImageVector.vectorResource(
+//                            id = R.drawable.ic_bluetooth_off
+//                        ),
+//                        contentDescription = "Bluetooth Status"
+//                    )
+//                }
+//
+//                IconButton(onClick = {
+//                    showDialog = true
+//                }) {
+//                    Icon(
+//                        imageVector = ImageVector.vectorResource(id = R.drawable.ic_all_modes),
+//                        contentDescription = "All modes"
+//                    )
+//                }
+//
+//                // IconButton for 3-dots icon
+//                IconButton(onClick = { expanded = true }) {
+//                    Icon(
+//                        imageVector = Icons.Default.MoreVert,
+//                        contentDescription = "More Options"
+//                    )
+//                }
+//
+//                DropdownMenu(
+//                    expanded = expanded,
+//                    onDismissRequest = { expanded = false }
+//                ) {
+//                    // Add items to the menu
+//                    DropdownMenuItem(
+//                        text = { Text("Item 1") },
+//                        onClick = {
+//                            // Handle Item 1 click
+//                            expanded = false
+//                        }
+//                    )
+//                    DropdownMenuItem(
+//                        text = { Text("Item 2") },
+//                        onClick = {
+//                            // Handle Item 2 click
+//                            expanded = false
+//                        }
+//                    )
+//                    DropdownMenuItem(
+//                        text = { Text("Item 3") },
+//                        onClick = {
+//                            // Handle Item 3 click
+//                            expanded = false
+//                        }
+//                    )
+//                }
+//
+//
+//                if (showDialog) {
+//                    ModeDialog(
+//                        modes = listOf(Mode.PaintMode(), Mode.ImageMode(), Mode.SpotifyMode()),
+//                        onIconSelected = {
+//                            mainViewModel.onModeSelected(it)
+//                            showDialog = false
+//                        },
+//                        onDismiss = {
+//                            showDialog = false
+//                        }
+//                    )
+//                }
+//            }
+//        )
+//    }
+//
+//    @Composable
+//    fun DrawingMatrix() {
+//        Column(
+//            modifier = Modifier
+//                .padding(16.dp)
+//        ) {
+//            Canvas(
+//                modifier = Modifier
+//                    .aspectRatio(1f)
+//                    .pointerInput(mainViewModel.selectedType.color) {
+//                        detectTapGestures { offset ->
+//                            val cellSize = size.width / 16
+//                            val row = (offset.y / cellSize).toInt()
+//                            val col = (offset.x / cellSize).toInt()
+//
+////                            if (viewModel.selectedType is Mode.PaintMode.Type.Fill) {
+////                                fillArea(row, col, viewModel.selectedType.color)
+////                            } else {
+//                            if (row in 0 until 16 && col in 0 until 16) {
+//                                mainViewModel.setMatrixColor(row, col, mainViewModel.selectedType.color)
+//                                Log.d(
+//                                    TAG,
+//                                    "DrawingMatrix: setMatrixColor: ${mainViewModel.selectedType.color}"
+//                                )
+//                            }
+//                            //}
+//                        }
+//                    }
+//                    .pointerInput(mainViewModel.selectedType.color) {
+//                        detectDragGestures { change, _ ->
+//                            change.consume()
+////                            if (viewModel.selectedType is Mode.PaintMode.Type.Fill) {
+////                                return@detectDragGestures
+////                            }
+//                            Log.d(
+//                                TAG,
+//                                "DrawingMatrix: setMatrixColora : ${mainViewModel.selectedType.color}"
+//                            )
+//
+//                            val cellSize = size.width / 16
+//                            val row = (change.position.y / cellSize).toInt()
+//                            val col = (change.position.x / cellSize).toInt()
+//
+//                            if (row in 0 until 16 && col in 0 until 16) {
+//                                mainViewModel.setMatrixColor(row, col, mainViewModel.selectedType.color)
+//                            }
+//                        }
+//                    }
+//            ) {
+//                val cellSize = size.width / 16
+//                for (row in 0 until 16) {
+//                    for (col in 0 until 16) {
+//                        drawRect(
+//                            color = mainViewModel.matrix[row][col],
+//                            topLeft = Offset(x = col * cellSize, y = row * cellSize),
+//                            size = Size(cellSize, cellSize)
+//                        )
+//                    }
+//                }
+//            }
+//        }
+//    }
+//
+//    private fun fillArea(row: Int, col: Int, newColor: Color) {
+//        val currentColor = mainViewModel.matrix[row][col]
+//        if (currentColor == newColor) return  // No need to fill if the color is the same
+//
+//        val visited = mutableSetOf<Pair<Int, Int>>()
+//        val stack = mutableListOf(Pair(row, col))
+//
+//        while (stack.isNotEmpty()) {
+//            val (r, c) = stack.removeAt(stack.size - 1)
+//
+//            if (r !in 0 until 16 || c !in 0 until 16 || visited.contains(Pair(r, c))) {
+//                continue
+//            }
+//
+//            visited.add(Pair(r, c))
+//
+//            // Change color of the current cell
+//            mainViewModel.setMatrixColor(r, c, newColor)
+//
+//            // Add neighbors to the stack
+//            if (r > 0 && mainViewModel.matrix[r - 1][c] == currentColor) stack.add(Pair(r - 1, c)) // Up
+//            if (r < 15 && mainViewModel.matrix[r + 1][c] == currentColor) stack.add(Pair(r + 1, c)) // Down
+//            if (c > 0 && mainViewModel.matrix[r][c - 1] == currentColor) stack.add(Pair(r, c - 1)) // Left
+//            if (c < 15 && mainViewModel.matrix[r][c + 1] == currentColor) stack.add(Pair(r, c + 1)) // Right
+//        }
+//    }
+//
+//    @Preview(showBackground = true)
+//    @Composable
+//    fun AppPreview() {
+//        MaterialTheme {
+//            DiplomaApp()
+//        }
+//    }
+//
+//    @Preview(showBackground = true)
+//    @Composable
+//    fun ToolbarPreview() {
+//        MaterialTheme {
+//            Toolbar()
+//        }
+//    }
+//
+//    @Preview(showBackground = true)
+//    @Composable
+//    fun DrawingMatrixPreview() {
+//        MaterialTheme {
+//            DrawingMatrix()
+//        }
+//    }
 }

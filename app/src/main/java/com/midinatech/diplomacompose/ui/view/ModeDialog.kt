@@ -1,6 +1,5 @@
-package com.midinatech.diplomacompose.ui
+package com.midinatech.diplomacompose.ui.view
 
-import androidx.annotation.DrawableRes
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,25 +22,14 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
-import com.midinatech.diplomacompose.R
-
-
-sealed class Mode {
-    @get:DrawableRes
-    abstract val icon: Int
-
-    data class Paint(@DrawableRes override val icon: Int = R.drawable.ic_paint_mode) : Mode()
-    data class Image(@DrawableRes override val icon: Int = R.drawable.ic_image_mode) : Mode()
-    data class Spotify(@DrawableRes override val icon: Int = R.drawable.ic_spotify_mode) : Mode()
-}
+import com.midinatech.diplomacompose.ui.mode.Mode
 
 @Composable
 fun ModeDialog(
-    onIconSelected: (Mode) -> Unit,
+    modes: List<Mode<*>>,
+    onIconSelected: (Mode<*>) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val modes = listOf(Mode.Paint(), Mode.Image(), Mode.Spotify())
-
     Dialog(onDismissRequest = { onDismiss() }) {
         Surface(
             shape = MaterialTheme.shapes.small,
@@ -87,6 +75,6 @@ fun ModeDialog(
 @Composable
 fun ModeDialogPreview() {
     MaterialTheme {
-        ModeDialog(onIconSelected = {}, onDismiss = {})
+        //ModeDialog(onIconSelected = {}, onDismiss = {})
     }
 }

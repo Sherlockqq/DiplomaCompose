@@ -1,4 +1,4 @@
-package com.midinatech.diplomacompose.ui
+package com.midinatech.diplomacompose.ui.view
 
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
@@ -10,18 +10,15 @@ import android.graphics.PorterDuff
 import android.graphics.RectF
 import android.graphics.Shader
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.interaction.InteractionSource
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -51,15 +48,17 @@ import android.graphics.Color as AndroidColor
 
 @Composable
 fun ColorPicker(
+    modifier: Modifier = Modifier,
     onColorSelected: (Color) -> Unit,
 ) {
     Column(
+        modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
         val hsv = remember {
             val hsv = floatArrayOf(0f, 0f, 0f)
-            AndroidColor.colorToHSV(Color.Blue.toArgb(), hsv)
+            AndroidColor.colorToHSV(Color.Red.toArgb(), hsv)
 
             mutableStateOf(
                 Triple(hsv[0], hsv[1], hsv[2])
@@ -80,14 +79,6 @@ fun ColorPicker(
             hsv.value = Triple(hue, hsv.value.second, hsv.value.third)
         }
 
-        Spacer(modifier = Modifier.height(32.dp))
-
-        Box(
-            modifier = Modifier
-                .size(80.dp)
-                .padding(0.dp, 0.dp, 0.dp, 10.dp)
-                .background(selectedColor.value)
-        )
         onColorSelected(selectedColor.value)
     }
 }
@@ -113,6 +104,9 @@ fun HueBar(
     ) {
         val drawScopeSize = size
 
+        if (drawScopeSize.height <= 0 || drawScopeSize.width <= 0) {
+            return@Canvas
+        }
         val bitmap = Bitmap.createBitmap(
             drawScopeSize.width.toInt(),
             drawScopeSize.height.toInt(),
